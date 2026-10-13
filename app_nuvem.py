@@ -2,6 +2,56 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import xml.etree.ElementTree as ET
+
+# --- FUNÇÃO INTELEGENTE: GERADOR DE XML BRUTO DO ESOCIAL (S-2200) ---
+def gerar_xml_esocial(dados):
+    # Cria a tag raiz do evento eSocial
+    esocial_tag = ET.Element("eSocial", xmlns="http://esocial.gov.br")
+    
+    # Bloco do Evento de Admissão
+    evt_admissao = ET.SubElement(esocial_tag, "evtAdmissao", Id=f"ID1000000000000002026101319000000001")
+    
+    # Bloco 1: Identificação do Empregador e eSocial
+    ide_evento = ET.SubElement(evt_admissao, "ideEvento")
+    ET.SubElement(ide_evento, "tpAmb").text = "2"  # 2 = Ambiente de Testes (Produção Restrita)
+    ET.SubElement(ide_evento, "procEmi").text = "1"  # 1 = Aplicativo do empregador
+    ET.SubElement(ide_evento, "verProc").text = "1.0.0"
+    
+    ide_empregador = ET.SubElement(evt_admissao, "ideEmpregador")
+    ET.SubElement(ide_empregador, "tpInsc").text = "1"  # 1 = CNPJ
+    ET.SubElement(ide_empregador, "nrInsc").text = "00000000000000"  # CNPJ da Empresa (Apenas números)
+    
+    # Bloco 2: Dados do Trabalhador (Aba 1 do seu app)
+    trabalhador = ET.SubElement(evt_admissao, "trabalhador")
+    ET.SubElement(trabalhador, "cpfTrab").text = str(dados.get('CPF', ''))
+    ET.SubElement(trabalhador, "nmTrab").text = str(dados.get('Nome_Completo', ''))
+    ET.SubElement(trabalhador, "dtNascto").text = str(dados.get('Data_Nascimento', ''))
+    ET.SubElement(trabalhador, "estCiv").text = "1"  # Código do eSocial para Estado Civil
+    
+    # Bloco 3: Dados do Vínculo de Contrato (Aba 1 / Aba 2)
+    vinculo = ET.SubElement(evt_admissao, "vinculo")
+    ET.SubElement(vinculo, "matricula").text = str(dados.get('Matricula_eSocial', ''))
+    ET.SubElement(vinculo, "tpRegTrab").text = "1"  # 1 = CLT
+    ET.SubElement(vinculo, "tpRegPrev").text = "1"  # 1 = Regime Geral (INSS)
+    
+    info_clt = ET.SubElement(vinculo, "infoRegime")
+    info_clt_detalhe = ET.SubElement(info_clt, "infoCLT")
+    ET.SubElement(info_clt_detalhe, "dtAdm").text = str(dados.get('Data_Admissao', ''))
+    ET.SubElement(info_clt_detalhe, "tpRegJor").text = "1"  # Submetido a Horário Fixo
+    
+    info_contrato = ET.SubElement(vinculo, "infoContrato")
+    ET.SubElement(info_contrato, "nmCargo").text = str(dados.get('Cargo', ''))
+    
+    remuneracao = ET.SubElement(info_contrato, "remuneracao")
+    ET.SubElement(remuneracao, "vrSalFx").text = str(dados.get('Salario_Base', '')).replace("R$", "").strip()
+    ET.SubElement(remuneracao, "undSalFixo").text = "5"  # 5 = Por Mês
+    
+    # Converte toda a estrutura em texto XML bruto formatado
+    xml_puro = ET.tostring(esocial_tag, encoding="utf-8", method="xml")
+    
+    # Importante: O eSocial exige declaração UTF-8 no topo do arquivo
+    return b'<?xml version="1.0" encoding="utf-8"?>\n' + xml_puro
 
 # Configuração da página Web
 st.set_page_config(page_title="programa teste RH", page_icon="💼", layout="wide")
@@ -74,7 +124,19 @@ with aba_contratacao:
             else:
                 df_novo.to_excel(ARQUIVO_EXCEL, index=False)
                 
+           # ... (código existente que salva na planilha do Excel)
             st.success(f"Funcionário validado na nuvem! Registrado como: Funcionário Nº {proximo_numero}")
+            
+            # --- NOVA FUNÇÃO: DISPARADOR DO BOTÃO DE DOWNLOAD DO XML ---
+            xml_gerado = gerar_xml_esocial(funcionario_atual)
+            
+            st.markdown("### 📑 Integração eSocial Pronta")
+            st.download_button(
+                label="📥 Baixar XML de Admissão Oficial (S-2200)",
+                data=xml_gerado,
+                file_name=f"S2200_Admissao_{cpf}.xml",
+                mime="text/xml"
+            )
 
 # --- ABA 2: DADOS MENSAIS & FGTS (TABELA DE RUBRICAS ESOCIAL CONFIGURADA) ---
 with aba_mensal:
