@@ -80,7 +80,7 @@ with aba_mensal:
         lista_funcionarios = df_func['Nome_Completo'].tolist()
         
         st.markdown("### 👤 Selecione o Funcionário para Fechamento")
-        nome_selecionado = st.selectbox("Escolha o colaborador:", lista_funcionarios)
+        nome_selecionado = st.selectbox("Escolha o colaborador:", lista_funcionarios, key="sel_mensal")
         
         dados_f = df_func[df_func['Nome_Completo'] == nome_selecionado].iloc[0]
         matricula_atual = dados_f['Matricula_eSocial']
@@ -89,8 +89,8 @@ with aba_mensal:
         
         st.info(f"Matrícula eSocial: {matricula_atual} | CPF: {cpf_atual}")
         
-        salario_folha = st.number_input("Confirme o Salário Base (R$)", min_value=0.0, value=salario_base_planilha)
-        horas_extras_input = st.number_input("Horas Extras Trabalhadas (R$)", min_value=0.0, value=0.0)
+        salario_folha = st.number_input("Confirme o Salário Base (R$)", min_value=0.0, value=salario_base_planilha, key="num_sal_folha")
+        horas_extras_input = st.number_input("Horas Extras Trabalhadas (R$)", min_value=0.0, value=0.0, key="num_he_folha")
         
         if st.button("Calcular Folha de Pagamento com Rubricas"):
             base_calculo_total = salario_folha + horas_extras_input
@@ -136,13 +136,81 @@ with aba_mensal:
     else:
         st.info("Nenhum funcionário encontrado no banco de dados. Cadastre primeiro na Aba 1.")
 
-# --- ABA 3: FÉRIAS ---
+# --- TÓPICO 2: ABA 3 DE FÉRIAS TOTALMENTE ATIVA ---
 with aba_ferias:
     st.header("🌴 Controle de Período Aquisitivo & Férias")
-    st.write("Módulo de compliance de gozo de férias ativo.")
+    st.markdown("Configure e simule as férias obrigatórias seguindo as regras da CLT e as notificações do evento **S-2230** do eSocial.")
+    
+    if os.path.exists(ARQUIVO_EXCEL):
+        df_func_f = pd.read_excel(ARQUIVO_EXCEL)
+        lista_func_f = df_func_f['Nome_Completo'].tolist()
+        
+        st.markdown("### 👤 Selecione o Funcionário para Recibo de Férias")
+        nome_f_selecionado = st.selectbox("Escolha o colaborador:", lista_func_f, key="sel_ferias")
+        
+        dados_f_ferias = df_func_f[df_func_f['Nome_Completo'] == nome_f_selecionado].iloc[0]
+        salario_base_ferias = float(str(dados_f_ferias['Salario_Base']).replace("R$", "").strip())
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            salario_ferias = st.number_input("Confirme o Salário Base para Férias (R$)", min_value=0.0, value=salario_base_ferias, key="num_sal_fer")
+            dias_gozo = st.slider("Quantidade de Dias de Férias", min_value=10, max_value=30, value=30, key="slide_dias_fer")
+        with col_f2:
+            vender_abono = st.radio("Deseja vender 1/3 das férias (Abono Pecuniário)?", ["Não", "Sim"], key="rad_abono")
+            adianta_13 = st.radio("Adiantar 1ª Parcela do 13º Salário?", ["Não", "Sim"], key="rad_13")
 
-# --- ABA 4: BANCO DE DADOS ---
+        # --- CONTINUAÇÃO DA ABA 3: FÉRIAS & COMPLIANCE ---
+        if st.button("🌴 Calcular Recibo de Férias (eSocial S-2230)"):
+            valor_dias_ferias = (salario_ferias / 30) * dias_gozo
+            terco_constitucional = valor_dias_ferias / 3
+            
+            abono_pecuniario = (salario_ferias / 30) * 10 if vender_abono == "Sim" else 0.0
+            terco_abono = abono_pecuniario / 3 if vender_abono == "Sim" else 0.0
+            adiantamento_13_valor = salario_ferias / 2 if adianta_13 == "Sim" else 0.0
+            
+            total_bruto_ferias = valor_dias_ferias + terco_constitucional + abono_pecuniario + terco_abono + adiantamento_13_valor
+            
+            inss_ferias = total_bruto_ferias * 0.12 if total_bruto_ferias > 2666 else total_bruto_ferias * 0.09
+            total_liquido_ferias = total_bruto_ferias - inss_ferias
+            
+            st.markdown("### 📄 Demonstrativo do Recibo de Férias")
+            st.success(f"""
+            * **(+) Valor dos {dias_gozo} dias de Gozo:** R$ {valor_dias_ferias:,.2f}
+            * **(+) 1/3 Constitucional de Férias:** R$ {terco_constitucional:,.2f}
+            * **(+) Abono Pecuniário (10 dias vendidos):** R$ {abono_pecuniario:,.2f}
+            * **(+) 1/3 sobre Abono Pecuniário:** R$ {terco_abono:,.2f}
+            * **(+) Adiantamento da 1ª Parcela do 13º:** R$ {adiantamento_13_valor:,.2f}
+            * ------------------------------------------------------------------
+            * **(=) TOTAL BRUTO DE FÉRIAS:** R$ {total_bruto_ferias:,.2f}
+            * **(-) Desconto INSS sobre Férias:** R$ {inss_ferias:,.2f}
+            * ------------------------------------------------------------------
+            * **💰 VALOR LÍQUIDO A PAGAR (2 dias antes do início): R$ {total_liquido_ferias:,.2f}**
+            """)
+            st.warning("⚠️ **Compliance eSocial:** O aviso de férias deve ser enviado ao governo com no mínimo **30 dias de antecedência** através do evento S-2230.")
+    else:
+        st.info("Nenhum funcionário cadastrado no banco de dados. Cadastre primeiro na Aba 1.")
+
+# --- ABA 4: BANCO DE DADOS CENTRAL ---
 with aba_banco:
     st.header("📊 Registro Central de Colaboradores Cadastrados")
+    st.markdown("Esta tabela interativa lê diretamente o arquivo Excel do sistema e lista todos os profissionais.")
+    
     if os.path.exists(ARQUIVO_EXCEL):
-        st.dataframe(pd.read_excel(ARQUIVO_EXCEL), use_container_width=True)
+        df_visualizar = pd.read_excel(ARQUIVO_EXCEL)
+        st.dataframe(df_visualizar, use_container_width=True)
+        
+        # Estrutura de Download corrigida dentro do bloco correto
+        with open(ARQUIVO_EXCEL, "rb") as file:
+            st.download_button(
+                label="📥 Baixar Planilha Excel Completa (.xlsx)",
+                data=file,
+                file_name="banco_dados_rh_atualizado.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        
+        st.markdown("### 📈 Estatísticas Rápidas")
+        col_e1, col_e2 = st.columns(2)
+        col_e1.metric(label="Total de Funcionários Cadastrados", value=len(df_visualizar))
+        col_e2.metric(label="Última Matrícula eSocial Gerada", value=str(df_visualizar['Matricula_eSocial'].iloc[-1]) if len(df_visualizar) > 0 else "N/A")
+    else:
+        st.info("Nenhum funcionário cadastrado no banco de dados até o momento. Cadastre o primeiro na Aba 1!")
